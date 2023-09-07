@@ -22,15 +22,15 @@
 
 int errcode;            // indicator of an error
 ptrdiff_t dim[3];       // size of data in x/y/z direction
-size_t sze;             // size of data as fattened array
-double *phase,*mag;     // input data phase/magnitude
+ptrdiff_t sze;             // size of data as fattened array
+const double *phase,*mag;     // input data phase/magnitude
 double *unwrapped;      // global results: unwrapped phase
 bool *flag;             // indicator of points processed
-long m_bsx,m_bsy,m_bsz; // stride for x/y/z dimension in flattened data array
+ptrdiff_t m_bsx,m_bsy,m_bsz; // stride for x/y/z dimension in flattened data array
 
 struct QUEUEENTRY {
-    int x,y,z;
-    long p;
+    ptrdiff_t x,y,z;
+    ptrdiff_t p;
     double v;
 };
 
@@ -235,9 +235,9 @@ void Check(int primaryqueuenum, QUEUEENTRY* qe,long offp, int offx, int offy, in
  flag (indicator of points processed): is initialized
  errorcode (indicator of an error): initialize and read
 */
-void unwrap(int seedx, int seedy, int seedz,long UNWRAPBINS) {
-    long i;
-    long seedp;
+void unwrap(ptrdiff_t seedx, ptrdiff_t seedy, ptrdiff_t seedz, ptrdiff_t UNWRAPBINS) {
+    ptrdiff_t i;
+    ptrdiff_t seedp;
 
     errcode=0;
 
@@ -314,15 +314,15 @@ void unwrap(int seedx, int seedy, int seedz,long UNWRAPBINS) {
 
  TODO: This function should not be needed and disappear after thorough refactoring.
 */
-void unwrap_helper(int seedx, int seedy, int seedz,
-                   long UNWRAPBINS,
-                   ptrdiff_t *dim_,
-                   size_t sze_,
-                   ptrdiff_t m_bsx_,
-                   ptrdiff_t m_bsy_,
-                   ptrdiff_t m_bsz_,
-                   double *phase_,
-                   double *mag_,
+void unwrap_helper(const ptrdiff_t seedx, const ptrdiff_t seedy, const ptrdiff_t seedz,
+                   const ptrdiff_t UNWRAPBINS,
+                   const ptrdiff_t *dim_,
+                   const ptrdiff_t sze_,
+                   const ptrdiff_t m_bsx_,
+                   const ptrdiff_t m_bsy_,
+                   const ptrdiff_t m_bsz_,
+                   const double *phase_,
+                   const double *mag_,
                    double *unwrapped_) {
     sze = sze_;
     m_bsx = m_bsx_;

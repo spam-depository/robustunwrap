@@ -1,12 +1,12 @@
 #include <stddef.h>
 
-void unwrap_helper(int seedx, int seedy, int seedz,
-                   long UNWRAPBINS,
-                   ptrdiff_t *dim_,
-                   size_t sze_,
-                   ptrdiff_t m_bsx_,
-                   ptrdiff_t m_bsy_,
-                   ptrdiff_t m_bsz_,
-                   double *phase_,
-                   double *mag_,
+void unwrap_helper(const ptrdiff_t seedx, const ptrdiff_t seedy, const ptrdiff_t seedz,
+                   const ptrdiff_t UNWRAPBINS,
+                   const ptrdiff_t *dim_,
+                   const ptrdiff_t sze_,
+                   const ptrdiff_t m_bsx_,
+                   const ptrdiff_t m_bsy_,
+                   const ptrdiff_t m_bsz_,
+                   const double *phase_,
+                   const double *mag_,
                    double *unwrapped_);
