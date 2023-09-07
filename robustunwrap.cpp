@@ -13,8 +13,8 @@
 #include "mex.h"
 #include <stdio.h>
 #include <string.h>
-#include "math.h"
-#include "getopt.h"
+//#include "math.h"
+//#include "getopt.h"
 #include "matrix.h"
 
 #define PI 3.14159265358979
@@ -23,8 +23,8 @@
 #define MAXFILENAMESIZE 1024
 
 int errcode;
-long dim[3];
-long sze;
+ptrdiff_t dim[3];
+size_t sze;
 long polesze;
 double *phase,*mag;
 double *unwrapped;
@@ -53,7 +53,7 @@ struct FIELD_2
 };
 
 
-void raiseerror(char *msg)
+void raiseerror(const char *msg)
 {
     mexErrMsgTxt(msg);
     errcode=1;
@@ -83,9 +83,6 @@ void TerminateQueue(int queuenum)
     if (m_q[queuenum]) delete m_q[queuenum];
     m_q[queuenum]=0;
 };
-
-
-
 
 int Push(int queuenum,void *x)
 {
@@ -281,87 +278,84 @@ void unwrap(int seedx, int seedy, int seedz,long UNWRAPBINS)
 };
 
 
-void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
-{
-    long i,j,k;
-    int seedx,seedy,seedz;
-    double *voxdims;
-    int ndims;
-    int numunwrapbins;
-    
-  /* Check for proper number of arguments. */
-    if (nrhs <3) {
+void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+    const mwSize ndims = 3;
+
+    /* Check for proper number of arguments. */
+    if (nrhs < 3) {
         mexErrMsgTxt("Robust unwrapping algorithm as in Cusack & Papadakis (2002).\nExpect at least 3 input arguments, unwrappeddata=unwrap([seed coords, 3 vector],[phase data, 3D double array],[magnitude data, 3D double array],{[numunwrapbins]}) ");
-    } else if (nlhs > 1) {
+    }
+    if (nlhs > 1) {
         mexErrMsgTxt("Too many output arguments");
     }
-    
-    
-  /* The input must be a noncomplex scalar double.*/
-    ndims = mxGetNumberOfDimensions(prhs[1]);
-    
-    if (!mxIsDouble(prhs[1]) || mxIsComplex(prhs[1]) || ndims!=3) {
-        mexErrMsgTxt("Data to be unwrapped must be a double 3D matrix.");
+
+    if (mxGetNumberOfDimensions(prhs[0]) != 2 || mxGetDimensions(prhs[0])[0] != 1 || mxGetDimensions(prhs[0])[1] != 3) {
+        mexErrMsgTxt("Seed coords must be line vector with 3 elements.");
     }
-    if (!mxIsDouble(prhs[2]) || mxIsComplex(prhs[2]) || ndims!=3) {
-        mexErrMsgTxt("Data to be unwrapped must be a double 3D matrix.");
+    if (mxIsComplex(prhs[0])) {
+        mexErrMsgTxt("Voxel dimensions of seed coords should not be complex.");
     }
-    
-    if ( mxIsComplex(prhs[0])) {
-        mexErrMsgTxt("Voxel dimensions should not be complex.");
-    }
-    
-    
-    
-    
-    
-    const int *dims;
-    double *maginput;
-    dims=mxGetDimensions(prhs[1]);
-    
-    sze=1;
-    for (i=0; i<3; i++)
+
+    /* The input must be a noncomplex double 3D matrix. */
     {
-        sze*=dims[i];
-        dim[i]=dims[i];
-    };
-    
-    
-  /* Create matrix for the return argument. */
-    plhs[0] = mxCreateNumericArray(ndims,dims, mxDOUBLE_CLASS,mxREAL);
-    voxdims=mxGetPr(prhs[0]);
-    
-    seedx=int(voxdims[0])-1;
-    seedy=int(voxdims[1])-1;
-    seedz=int(voxdims[2])-1;
-    
-    if (seedx<0 || seedx>=dims[0] || seedy<0 || seedy>=dims[1] || seedz<0 || seedz>=dims[2])
-        mexErrMsgTxt("The seed specified was outside the matrix bounds.");
-    
-    phase=mxGetPr(prhs[1]);
-    
-    /* Negate input as low polefield values unwrapped first */
-    maginput=mxGetPr(prhs[2]);
-    mag=new double[sze];
-    for(i=0; i<sze; i++)
-        mag[i]=-maginput[i];
-    
-    unwrapped=mxGetPr(plhs[0]);
-    if (nrhs==4)
-    {
-        if (!mxIsDouble(prhs[3]) ||  mxIsComplex(prhs[3]))
-        {
-            mexErrMsgTxt("Number of unwrapping bins should be a non-complex double.");
+        mwSize ndims_phs = mxGetNumberOfDimensions(prhs[1]);
+        if (!mxIsDouble(prhs[1]) || mxIsComplex(prhs[1]) || ndims_phs != ndims) {
+            mexErrMsgTxt("Data to be unwrapped must be a double 3D matrix.");
         }
-        numunwrapbins=int(*mxGetPr(prhs[3]));
     }
-    else
-        numunwrapbins=10000;
-    m_bsx=1;
-    m_bsy=dims[0];
-    m_bsz=dims[0]*dims[1];
-  /* Assign pointers to each input and output. */
-    unwrap(seedx,seedy,seedz,numunwrapbins);
-    
-    
+    {
+        mwSize ndims_mag = mxGetNumberOfDimensions(prhs[2]);
+        if (!mxIsDouble(prhs[2]) || mxIsComplex(prhs[2]) || ndims_mag != ndims) {
+            mexErrMsgTxt("Data to be unwrapped must be a double 3D matrix.");
+        }
+    }
+
+    mxDouble *voxdims = mxGetPr(prhs[0]);
+    ptrdiff_t seedx = ptrdiff_t(voxdims[0]) - 1;
+    ptrdiff_t seedy = ptrdiff_t(voxdims[1]) - 1;
+    ptrdiff_t seedz = ptrdiff_t(voxdims[2]) - 1;
+
+    const mwSize *dims = mxGetDimensions(prhs[1]);
+    const mwSize *dims_mag = mxGetDimensions(prhs[2]);
+    sze = 1;
+    for (size_t i = 0; i < ndims; i++) {
+        if (dims[i] != dims_mag[i]) {
+            mexErrMsgTxt("Phase data and magnitude data should have the same size.");
+        }
+        sze *= dims[i];
+        dim[i] = dims[i];
+    };
+
+    /* define strides */
+    m_bsx = 1;
+    m_bsy = dims[0];
+    m_bsz = dims[0] * dims[1];
+
+    if (seedx < 0 || seedx >= dims[0] || seedy < 0 || seedy >= dims[1] || seedz < 0 || seedz >= dims[2]) {
+        mexErrMsgTxt("The seed specified was outside the matrix bounds.");
+    }
+
+    mxDouble *phsinput = mxGetPr(prhs[1]); // TODO: eventually replace with mxGetDoubles
+    phase = phsinput;
+
+    /* Negate input as low polefield values unwrapped first */
+    mxDouble *maginput = mxGetPr(prhs[2]); // TODO: eventually replace with mxGetDoubles
+    mag = new double[sze];
+    for(size_t i = 0; i < sze; i++)
+        mag[i] = -maginput[i];
+
+    int numunwrapbins = 10000;
+    if (nrhs == 4) {
+        if (!mxIsDouble(prhs[3]) ||  mxIsComplex(prhs[3]))
+            mexErrMsgTxt("Number of unwrapping bins should be a non-complex double.");
+        numunwrapbins = int(*mxGetPr(prhs[3]));  // TODO: eventually replace with mxGetDoubles
+    }
+
+    /* Create matrix for the return argument. */
+    plhs[0] = mxCreateNumericArray(ndims, dims, mxDOUBLE_CLASS, mxREAL);
+    mxDouble *uwpoutput = mxGetPr(plhs[0]);
+    unwrapped = uwpoutput;
+
+    /* Assign pointers to each input and output. */
+    unwrap(seedx, seedy, seedz, numunwrapbins);
 }
