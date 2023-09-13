@@ -66,3 +66,13 @@ you can load it like any other package in your Python code:
 ```python
 import robustunwrap
 ```
+
+### Building the Matlab Interface
+
+This should work out of the box if you have a Matlab installation.
+The only thing required is that you specify the root folder of Matlab if it
+is not in the `PATH` during the run of Cmake
+
+```shell
+cmake -DMATLAB_INT=1 -DMatlab_ROOT_DIR="path/to/matlab/R2022a" ..
+```
