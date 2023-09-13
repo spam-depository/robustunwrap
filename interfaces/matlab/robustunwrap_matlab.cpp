@@ -21,7 +21,7 @@
 
 #include "mex.h"
 #include "matrix.h"
-#include "../../include/robustunwrap.h"
+#include "robustunwrap.h"
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     const mwSize ndims = 3;
@@ -85,7 +85,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     /* Negate input as low polefield values unwrapped first */
     mxDouble *maginput = mxGetPr(prhs[2]); // TODO: eventually replace with mxGetDoubles
-    mxDouble *mag = new mxDouble[sze];
+    auto *mag = new mxDouble[sze];
     for(size_t i = 0; i < sze; i++)
         mag[i] = -maginput[i];
 
@@ -104,5 +104,5 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     unwrap_helper(seedx, seedy, seedz, numunwrapbins, dim, sze, m_bsx, m_bsy, m_bsz, phase, mag, unwrapped);
 
     /* cleanup */
-    delete mag;
+    delete[] mag;
 }
