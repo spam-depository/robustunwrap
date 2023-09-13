@@ -17,38 +17,36 @@
  c++ -O3 -Wall -shared -std=c++11 -fPIC $(python3 -m pybind11 --includes) robustunwrap_python.cpp robustunwrap.cpp raiseerror_pybind.cpp -o robustunwrap$(python3-config --extension-suffix)
  */
 
-#include "robustunwrap.h"
-#include "raiseerror.h"
-
-#include <stddef.h>
-
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
+
+#include "robustunwrap.h"
+#include "raiseerror.h"
 
 namespace py = pybind11;
 
 py::array_t<double, py::array::f_style | py::array::forcecast> robustunwrap(py::list seed, py::array_t<double, py::array::f_style | py::array::forcecast> phaseData, py::array_t<double, py::array::f_style | py::array::forcecast> magnitudeData, const int numunwrapbins = 10000) {
-    const size_t ndims = 3;
+    const size_t nDims = 3;
 
     if (seed.size() != 3) {
         throw std::runtime_error("seed must be an index into the 3D data array consisting of 3 ints.");
     }
 
-    const ptrdiff_t seedx = py::cast<int>(seed[0]); // maybe a bit naive. might not work that way.
-    const ptrdiff_t seedy = py::cast<int>(seed[1]);
-    const ptrdiff_t seedz = py::cast<int>(seed[2]);
+    const ptrdiff_t seedX = py::cast<int>(seed[0]); // maybe a bit naive. might not work that way.
+    const ptrdiff_t seedY = py::cast<int>(seed[1]);
+    const ptrdiff_t seedZ = py::cast<int>(seed[2]);
 
     
     const ptrdiff_t *dims = phaseData.shape();
-    const ptrdiff_t sze = phaseData.size();
+    const ptrdiff_t size = phaseData.size();
 
-    if (seedx < 0 || seedx >= dims[0] || seedy < 0 || seedy >= dims[1] || seedz < 0 || seedz >= dims[2]) {
+    if (seedX < 0 || seedX >= dims[0] || seedY < 0 || seedY >= dims[1] || seedZ < 0 || seedZ >= dims[2]) {
         throw std::runtime_error("The seed specified was outside the matrix bounds.");
     }
 
-    if (magnitudeData.ndim() != ndims || phaseData.ndim() != ndims) {
+    if (magnitudeData.ndim() != nDims || phaseData.ndim() != nDims) {
         throw std::runtime_error("Number of dimensions must be three");
-    } else if (!std::equal(dims, dims + ndims, phaseData.shape())) {
+    } else if (!std::equal(dims, dims + nDims, phaseData.shape())) {
         throw std::runtime_error("magnitudeData and phaseData shapes must match");
     }
     /* The input must be a noncomplex scalar double.*/
@@ -60,24 +58,24 @@ py::array_t<double, py::array::f_style | py::array::forcecast> robustunwrap(py::
     ptrdiff_t m_bsz = dims[0] * dims[1];
 
     // Negate input as low polefield values unwrapped first
-    const double *maginput = magnitudeData.data();
-    double *mag = new double[sze];
-    for (long i = 0; i < sze; i++)
-        mag[i] = -maginput[i];
+    const double *magnitudeInput = magnitudeData.data();
+    auto *magnitude = new double[size];
+    for (long i = 0; i < size; i++)
+        magnitude[i] = -magnitudeInput[i];
 
     // Create matrix for the return argument.
     auto unwrappedArray = py::array_t<double, py::array::f_style | py::array::forcecast>({dims[0], dims[1], dims[2]}); // not very elegant
     double *unwrapped = static_cast<double *>(unwrappedArray.request().ptr);
 
-    unwrap_helper(seedx, seedy, seedz, numunwrapbins, dims, sze, m_bsx, m_bsy, m_bsz,
-                  phaseData.data(), mag, unwrapped);
+    unwrap_helper(seedX, seedY, seedZ, numunwrapbins, dims, size, m_bsx, m_bsy, m_bsz,
+                  phaseData.data(), magnitude, unwrapped);
 
-    delete mag;
+    delete[] magnitude;
 
     return unwrappedArray;
 }
 
-PYBIND11_MODULE(robustunwrap, m) {
+PYBIND11_MODULE(robustunwrap_python_library, m) {
     m.doc() = "attempt to interface robustunwrap (Cusack & Papadakis 2002) with pybind";
     m.def("robustunwrap", &robustunwrap, "robustunwrap (Cusack & Papadakis 2002)",
         py::arg("seed"), py::arg("phaseData"), py::arg("magnitudeData"),
