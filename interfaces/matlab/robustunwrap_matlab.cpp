@@ -21,7 +21,7 @@
 
 #include "mex.h"
 #include "matrix.h"
-#include "robustunwrap.h"
+#include "../../include/robustunwrap.h"
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     const mwSize ndims = 3;

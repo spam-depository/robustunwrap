@@ -10,26 +10,23 @@
  Version 3.00 Oct 2006 adapted for matlab
  */
 
-#include <string.h> // memcpy
+#include <cstring>
 
 #include "raiseerror.h"
 #include "robustunwrap.h"
 
 #define PI 3.14159265358979
-#define FILEFORMAT_CAMRES 1
-#define FILEFORMAT_ANALYZE 2
-#define MAXFILENAMESIZE 1024
 
-int errcode;            // indicator of an error
-ptrdiff_t dim[3];       // size of data in x/y/z direction
-ptrdiff_t sze;             // size of data as fattened array
-const double *phase,*mag;     // input data phase/magnitude
-double *unwrapped;      // global results: unwrapped phase
-bool *flag;             // indicator of points processed
-ptrdiff_t m_bsx,m_bsy,m_bsz; // stride for x/y/z dimension in flattened data array
+int errcode;                    // indicator of an error
+ptrdiff_t dim[3];               // size of data in x/y/z direction
+ptrdiff_t sze;                  // size of data as fattened array
+const double *phase, *mag;      // input data phase/magnitude
+double *unwrapped;              // global results: unwrapped phase
+bool *flag;                     // indicator of points processed
+ptrdiff_t m_bsx, m_bsy, m_bsz;  // stride for x/y/z dimension in flattened data array
 
 struct QUEUEENTRY {
-    ptrdiff_t x,y,z;
+    ptrdiff_t x, y, z;
     ptrdiff_t p;
     double v;
 };
@@ -44,19 +41,19 @@ struct QUEUEENTRY {
 */
 void raiseerror(const char *msg) {
     raiseerror_api(msg);
-    errcode=1;
+    errcode = 1;
 };
 
 /* QUEUE
- The follwoing functions implement an array of NUMQUEUES FIFO queues for
+ The following functions implement an array of NUMQUEUES FIFO queues for
  QUEUEENTRY elements. The individual queues get initialized with space for
  DEFAULTBLOCK number of elements and grow by BLOCKINCREMENT if full
  automatically.
- The initial potion of memeory is reserved in lazy manner upon first push to the spcific queue
+ The initial potion of memory is reserved in lazy manner upon first push to the specific queue
 */
-const long NUMQUEUES=10000; // number of independent queues available
-const long DEFAULTBLOCK=100; // initial size of each queue in elements
-const long BLOCKINCREMENT=500; // automatic expansion size if queue is full
+const long NUMQUEUES = 10000; // number of independent queues available
+const long DEFAULTBLOCK = 100; // initial size of each queue in elements
+const long BLOCKINCREMENT = 500; // automatic expansion size if queue is full
 
 long m_bot[NUMQUEUES], m_top[NUMQUEUES]; // FI and LI element for each queue
 long m_size[NUMQUEUES], m_chunk[NUMQUEUES], m_sizeb[NUMQUEUES]; // memory size of each queue in elements (m_size) and bytes (m_sizeb) and size of a single element (m_chunk) for each queue
@@ -67,13 +64,13 @@ char *m_q[NUMQUEUES]; // pointer to allocated memory for each queue (or 0)
  This function only sets the metadata, the actual memory allocation is done
  in lazy manner by push()
 */
-void InitQueue(int queuenum,int chunk) {
-    m_chunk[queuenum]=chunk;
-    m_bot[queuenum]=0;
-    m_top[queuenum]=0;
-    m_size[queuenum]=DEFAULTBLOCK;
-    m_sizeb[queuenum]=m_size[queuenum]*m_chunk[queuenum];
-    m_q[queuenum]=0;
+void InitQueue(int queuenum, int chunk) {
+    m_chunk[queuenum] = chunk;
+    m_bot[queuenum] = 0;
+    m_top[queuenum] = 0;
+    m_size[queuenum] = DEFAULTBLOCK;
+    m_sizeb[queuenum] = m_size[queuenum] * m_chunk[queuenum];
+    m_q[queuenum] = nullptr;
 };
 
 /*
@@ -83,7 +80,7 @@ void InitQueue(int queuenum,int chunk) {
 */
 void TerminateQueue(int queuenum) {
     if (m_q[queuenum]) delete m_q[queuenum];
-    m_q[queuenum]=0;
+    m_q[queuenum] = nullptr;
 };
 
 /*
@@ -93,48 +90,49 @@ void TerminateQueue(int queuenum) {
  x is copied from the given pointer. size is assumed to be m_chunk[queuenum]
  bytes as defined with InitQueue()
 */
-int Push(int queuenum,void *x) {
-    if (!m_q[queuenum]) m_q[queuenum]=new char[m_sizeb[queuenum]];
+int Push(int queuenum, void *x) {
+    if (!m_q[queuenum]) m_q[queuenum] = new char[m_sizeb[queuenum]];
     if (!m_q[queuenum]) {
         raiseerror("Out of memory - could not generate new point queue.");
-        return(-1); // should never be reached
+        return (-1); // should never be reached
     };
 
-    int stacksize;
-    stacksize=m_top[queuenum]-m_bot[queuenum];
-    if (stacksize<0) stacksize+=m_size[queuenum];
-    memcpy(m_q[queuenum]+m_top[queuenum]*m_chunk[queuenum],x,m_chunk[queuenum]);
+    long stacksize;
+    stacksize = m_top[queuenum] - m_bot[queuenum];
+    if (stacksize < 0) stacksize += m_size[queuenum];
+    memcpy(m_q[queuenum] + m_top[queuenum] * m_chunk[queuenum], x, m_chunk[queuenum]);
     m_top[queuenum]++;
 
-    if (m_top[queuenum]==m_size[queuenum]) m_top[queuenum]=0;
+    if (m_top[queuenum] == m_size[queuenum]) m_top[queuenum] = 0;
 
-    if (m_top[queuenum]==m_bot[queuenum]) {
+    if (m_top[queuenum] == m_bot[queuenum]) {
         char *newq;
         long newsize, newsizeb, abovebot_b;
         // previously out of memory - now auto-expand
-        newsize=m_size[queuenum]+BLOCKINCREMENT;
-        newsizeb=newsize*m_chunk[queuenum];
-        newq=new char[newsizeb];
+        newsize = m_size[queuenum] + BLOCKINCREMENT;
+        newsizeb = newsize * m_chunk[queuenum];
+        newq = new char[newsizeb];
         if (!newq) {
             raiseerror("Out of memory - point queue full.");
-            return(-1); // should be never reached
+            return (-1); // should be never reached
         };
         // While we're shifting circular buffer, it is actually easier to re-origin it
         // to zero.
         // first, copy top bit from m_bot upwards
-        abovebot_b=(m_size[queuenum]-m_bot[queuenum])*m_chunk[queuenum];
-        if (abovebot_b>0) memcpy(newq,(char *)m_q[queuenum]+m_bot[queuenum]*m_chunk[queuenum],abovebot_b);
+        abovebot_b = (m_size[queuenum] - m_bot[queuenum]) * m_chunk[queuenum];
+        if (abovebot_b > 0) memcpy(newq, (char *) m_q[queuenum] + m_bot[queuenum] * m_chunk[queuenum], abovebot_b);
         // then, do m_top downwards
-        if (m_top[queuenum]!=0) memcpy((char *) newq+abovebot_b,m_q[queuenum],m_top[queuenum]*m_chunk[queuenum]);
-        m_bot[queuenum]=0;
-        m_top[queuenum]=m_size[queuenum];
-        m_size[queuenum]=newsize;
-        m_sizeb[queuenum]=newsizeb;
+        if (m_top[queuenum] != 0)
+            memcpy((char *) newq + abovebot_b, m_q[queuenum], m_top[queuenum] * m_chunk[queuenum]);
+        m_bot[queuenum] = 0;
+        m_top[queuenum] = m_size[queuenum];
+        m_size[queuenum] = newsize;
+        m_sizeb[queuenum] = newsizeb;
         delete m_q[queuenum]; // recover old memory
-        m_q[queuenum]=newq;
+        m_q[queuenum] = newq;
     };
 
-    return(0);
+    return (0);
 };
 
 /*
@@ -142,14 +140,14 @@ int Push(int queuenum,void *x) {
  returns 0 on success
  returns 1 if queue is empty
 */
-int Pop(int queuenum,void *x) {
-    if (m_bot[queuenum]==m_top[queuenum]) return(1);
+int Pop(int queuenum, void *x) {
+    if (m_bot[queuenum] == m_top[queuenum]) return (1);
 
-    memcpy(x,m_q[queuenum]+m_bot[queuenum]*m_chunk[queuenum],m_chunk[queuenum]);
+    memcpy(x, m_q[queuenum] + m_bot[queuenum] * m_chunk[queuenum], m_chunk[queuenum]);
     m_bot[queuenum]++;
-    if (m_bot[queuenum]==m_size[queuenum]) m_bot[queuenum]=0;
+    if (m_bot[queuenum] == m_size[queuenum]) m_bot[queuenum] = 0;
 
-    return(0);
+    return (0);
 };
 /* QUEUE end */
 
@@ -174,36 +172,36 @@ int Pop(int queuenum,void *x) {
  dim (size of data in x/y/z direction): read
  flag (indicator of points processed): flag for point at offset is set
 */
-void Check(int primaryqueuenum, QUEUEENTRY* qe,long offp, int offx, int offy, int offz) {
+void Check(int primaryqueuenum, QUEUEENTRY *qe, long offp, int offx, int offy, int offz) {
     /* first check bounds */
     QUEUEENTRY nqe;
-    nqe.x=qe->x+offx;
-    if ((nqe.x<0)||(nqe.x>=dim[0])) return;
-    nqe.y=qe->y+offy;
-    if ((nqe.y<0)||(nqe.y>=dim[1])) return;
-    nqe.z=qe->z+offz;
-    if ((nqe.z<0)||(nqe.z>=dim[2])) return;
+    nqe.x = qe->x + offx;
+    if ((nqe.x < 0) || (nqe.x >= dim[0])) return;
+    nqe.y = qe->y + offy;
+    if ((nqe.y < 0) || (nqe.y >= dim[1])) return;
+    nqe.z = qe->z + offz;
+    if ((nqe.z < 0) || (nqe.z >= dim[2])) return;
 
-    nqe.p=qe->p+offp;
+    nqe.p = qe->p + offp;
 
     if (flag[nqe.p]) return; /* Already been here */
 
     /* Actually do unwrap */
     int wholepis;
-    wholepis=int((phase[nqe.p]-qe->v)/PI);
+    wholepis = int((phase[nqe.p] - qe->v) / PI);
 
-    if (wholepis>=1)
-        nqe.v=(double) phase[nqe.p]-2*PI*int((wholepis+1)/2);
-    else if (wholepis<=-1)
-        nqe.v=(double) phase[nqe.p]+2*PI*int((1-wholepis)/2);
-    else nqe.v=phase[nqe.p];
+    if (wholepis >= 1)
+        nqe.v = (double) phase[nqe.p] - 2 * PI * int((wholepis + 1) / 2);
+    else if (wholepis <= -1)
+        nqe.v = (double) phase[nqe.p] + 2 * PI * int((1 - wholepis) / 2);
+    else nqe.v = phase[nqe.p];
 
-    unwrapped[nqe.p]=nqe.v;
-    flag[nqe.p]=true;
+    unwrapped[nqe.p] = nqe.v;
+    flag[nqe.p] = true;
 
-    if (Push(primaryqueuenum,&nqe))
+    if (Push(primaryqueuenum, &nqe))
         raiseerror("Out of memory!");
-};
+}
 
 /*
  The main unwrapping algorithm
@@ -235,76 +233,78 @@ void Check(int primaryqueuenum, QUEUEENTRY* qe,long offp, int offx, int offy, in
  flag (indicator of points processed): is initialized
  errorcode (indicator of an error): initialize and read
 */
+//TODO: Why on earth is ptrdiff_t used everywhere? Isn't seed just a number? Highly confusing..
 void unwrap(ptrdiff_t seedx, ptrdiff_t seedy, ptrdiff_t seedz, ptrdiff_t UNWRAPBINS) {
-    ptrdiff_t i;
+//    ptrdiff_t i;
     ptrdiff_t seedp;
 
-    errcode=0;
+    errcode = 0;
 
     /* Minimum number of unwrapping bins is 2 */
-    if (UNWRAPBINS<2) UNWRAPBINS=2;
+    if (UNWRAPBINS < 2) UNWRAPBINS = 2;
     /* Find min and max */
-    double min,max;
-    min=(double) 1e38;
-    max=0;
+    double min, max;
+    min = (double) 1e38;
+    max = 0;
 
-    for (i=0; i<sze; i++) {
-        min=mag[i]<min?mag[i]:min;
-        max=mag[i]>max?mag[i]:max;
+    for (ptrdiff_t i = 0; i < sze; i++) {
+        min = mag[i] < min ? mag[i] : min;
+        max = mag[i] > max ? mag[i] : max;
     };
 
     double diff = (double) 1.00001 * (max - min);
 
-    seedp=seedx+dim[0]*(seedy+dim[1]*seedz);
+    seedp = seedx + dim[0] * (seedy + dim[1] * seedz);
 
-    flag=new bool[sze];
+    flag = new bool[sze];
 
     if (!flag) raiseerror("Out of memory. ");
-    for (i=0; i<sze; i++)
-        flag[i]=false;
+    for (ptrdiff_t i = 0; i < sze; i++)
+        flag[i] = false;
 
-    for (i=0; i<UNWRAPBINS; i++)
-        InitQueue(i,sizeof(QUEUEENTRY));
-    QUEUEENTRY qe;
+    for (ptrdiff_t i = 0; i < UNWRAPBINS; i++)
+        InitQueue(static_cast<int>(i), sizeof(QUEUEENTRY));
+    QUEUEENTRY qe{};
 
-    qe.p=seedp;
-    qe.x=seedx;
-    qe.y=seedy;
-    qe.z=seedz;
-    unwrapped[seedp]=qe.v=phase[seedp];
-    flag[seedp]=true;
+    qe.p = seedp;
+    qe.x = seedx;
+    qe.y = seedy;
+    qe.z = seedz;
+    unwrapped[seedp] = qe.v = phase[seedp];
+    flag[seedp] = true;
 
 /* push seed */
-    Push(0,&qe);
+    Push(0, &qe);
 
 /* First, work out pole field threshold that we're going to use */
-    double *polefieldthresholds = new double [UNWRAPBINS];
+    auto *polefieldthresholds = new double[UNWRAPBINS];
 
-    for (i=0; i<(UNWRAPBINS); i++)
-        polefieldthresholds[i] = min + (diff * i / (UNWRAPBINS - 1)); 
+    for (ptrdiff_t i = 0; i < UNWRAPBINS; i++)
+        polefieldthresholds[i] = min + (diff * static_cast<double>(i) / (static_cast<double>(UNWRAPBINS) - 1.0));
 
     // TODO: Display warning if seedpoint is chosen badly (i.e. mag[seed]>polefieldthresholds[0])
 
-    for (i=0; i<UNWRAPBINS ; i++) {
-        while (!errcode && !Pop(i,&qe)) {
-            if (mag[qe.p]>polefieldthresholds[i]) { /* too close to a scary pole, so just defer by pushing to other stack */
+    for (ptrdiff_t i = 0; i < UNWRAPBINS; i++) {
+        while (!errcode && !Pop(static_cast<int>(i), &qe)) {
+            if (mag[qe.p] >
+                polefieldthresholds[i]) { /* too close to a scary pole, so just defer by pushing to other stack */
                 int ind;
-                for (ind = i+1; mag[qe.p] > polefieldthresholds[ind]; ind++);
-                Push(ind, &qe);										/* just defer by pushing to relevant stack */
+                for (ind = i + 1; mag[qe.p] > polefieldthresholds[ind]; ind++);
+                Push(ind, &qe);                                        /* just defer by pushing to relevant stack */
             } else {
-                Check(i,&qe,+m_bsz,0,0,1);
-                Check(i,&qe,-m_bsz,0,0,-1);
-                Check(i,&qe,+m_bsy,0,1,0);
-                Check(i,&qe,-m_bsy,0,-1,0);
-                Check(i,&qe,+m_bsx,1,0,0);
-                Check(i,&qe,-m_bsx,-1,0,0);
+                Check(static_cast<int>(i), &qe, +m_bsz, 0, 0, 1);
+                Check(static_cast<int>(i), &qe, -m_bsz, 0, 0, -1);
+                Check(static_cast<int>(i), &qe, +m_bsy, 0, 1, 0);
+                Check(static_cast<int>(i), &qe, -m_bsy, 0, -1, 0);
+                Check(static_cast<int>(i), &qe, +m_bsx, 1, 0, 0);
+                Check(static_cast<int>(i), &qe, -m_bsx, -1, 0, 0);
             };
         };
-        TerminateQueue(i);	/* done with this Queue so free up memory */
-        
+        TerminateQueue(static_cast<int>(i));    /* done with this Queue so free up memory */
+
         if (errcode) break;
     };
-    
+
     delete flag;
 };
 

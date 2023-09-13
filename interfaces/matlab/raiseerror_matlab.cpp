@@ -1,5 +1,5 @@
 #include "mex.h"
-#include "raiseerror.h"
+#include "../../include/raiseerror.h"
 
 void raiseerror_api(const char *msg)
 {
