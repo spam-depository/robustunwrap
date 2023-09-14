@@ -1,12 +1,16 @@
-#include <stddef.h>
+#pragma once
 
-void unwrap_helper(const ptrdiff_t seedx, const ptrdiff_t seedy, const ptrdiff_t seedz,
-                   const ptrdiff_t UNWRAPBINS,
+#include <cstddef>
+
+void unwrap_helper(ptrdiff_t seedx,
+                   ptrdiff_t seedy,
+                   ptrdiff_t seedz,
+                   ptrdiff_t UNWRAPBINS,
                    const ptrdiff_t *dim_,
-                   const ptrdiff_t sze_,
-                   const ptrdiff_t m_bsx_,
-                   const ptrdiff_t m_bsy_,
-                   const ptrdiff_t m_bsz_,
+                   ptrdiff_t sze_,
+                   ptrdiff_t m_bsx_,
+                   ptrdiff_t m_bsy_,
+                   ptrdiff_t m_bsz_,
                    const double *phase_,
                    const double *mag_,
                    double *unwrapped_);

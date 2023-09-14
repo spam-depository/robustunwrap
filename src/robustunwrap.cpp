@@ -21,6 +21,7 @@ int errcode;                    // indicator of an error
 ptrdiff_t dim[3];               // size of data in x/y/z direction
 ptrdiff_t sze;                  // size of data as fattened array
 const double *phase, *mag;      // input data phase/magnitude
+// TODO: unwrapped is assigned, but never accessed
 double *unwrapped;              // global results: unwrapped phase
 bool *flag;                     // indicator of points processed
 ptrdiff_t m_bsx, m_bsy, m_bsz;  // stride for x/y/z dimension in flattened data array
@@ -42,7 +43,7 @@ struct QUEUEENTRY {
 void raiseerror(const char *msg) {
     raiseerror_api(msg);
     errcode = 1;
-};
+}
 
 /* QUEUE
  The following functions implement an array of NUMQUEUES FIFO queues for
@@ -71,7 +72,7 @@ void InitQueue(int queuenum, int chunk) {
     m_size[queuenum] = DEFAULTBLOCK;
     m_sizeb[queuenum] = m_size[queuenum] * m_chunk[queuenum];
     m_q[queuenum] = nullptr;
-};
+}
 
 /*
  free the memory for queue at ince queuenum
@@ -81,7 +82,7 @@ void InitQueue(int queuenum, int chunk) {
 void TerminateQueue(int queuenum) {
     if (m_q[queuenum]) delete m_q[queuenum];
     m_q[queuenum] = nullptr;
-};
+}
 
 /*
  push element x into queue at index queuenum
@@ -92,14 +93,19 @@ void TerminateQueue(int queuenum) {
 */
 int Push(int queuenum, void *x) {
     if (!m_q[queuenum]) m_q[queuenum] = new char[m_sizeb[queuenum]];
+
+    // TODO: Can be removed. "new char[..]" will throw an exception when out of memory. It will not return null_ptr.
+    // See https://en.cppreference.com/w/cpp/memory/new/operator_new
     if (!m_q[queuenum]) {
         raiseerror("Out of memory - could not generate new point queue.");
         return (-1); // should never be reached
-    };
+    }
 
+    // TODO: What exactly is stacksize supposed to do? It's never used anywhere else although it is assigned here.
     long stacksize;
     stacksize = m_top[queuenum] - m_bot[queuenum];
     if (stacksize < 0) stacksize += m_size[queuenum];
+
     memcpy(m_q[queuenum] + m_top[queuenum] * m_chunk[queuenum], x, m_chunk[queuenum]);
     m_top[queuenum]++;
 
@@ -112,10 +118,13 @@ int Push(int queuenum, void *x) {
         newsize = m_size[queuenum] + BLOCKINCREMENT;
         newsizeb = newsize * m_chunk[queuenum];
         newq = new char[newsizeb];
+
+        // TODO: Can be removed. "new char[..]" will throw an exception when out of memory. It will not return null_ptr.
         if (!newq) {
             raiseerror("Out of memory - point queue full.");
             return (-1); // should be never reached
-        };
+        }
+
         // While we're shifting circular buffer, it is actually easier to re-origin it
         // to zero.
         // first, copy top bit from m_bot upwards
@@ -128,12 +137,13 @@ int Push(int queuenum, void *x) {
         m_top[queuenum] = m_size[queuenum];
         m_size[queuenum] = newsize;
         m_sizeb[queuenum] = newsizeb;
-        delete m_q[queuenum]; // recover old memory
+        // TODO: Seems wrong as m_q[index] is an array. Use delete[]
+        delete[] m_q[queuenum]; // recover old memory
         m_q[queuenum] = newq;
-    };
+    }
 
     return (0);
-};
+}
 
 /*
  Copy first element of the queue to pointer x and remove from the queue
@@ -148,7 +158,7 @@ int Pop(int queuenum, void *x) {
     if (m_bot[queuenum] == m_size[queuenum]) m_bot[queuenum] = 0;
 
     return (0);
-};
+}
 /* QUEUE end */
 
 /*
@@ -158,7 +168,7 @@ int Pop(int queuenum, void *x) {
  without any action. If checks oass a potential shift by multiples of 2*PI is
  estimated and applied based on the value difference of qe and the neighbor (the
  multiple might be 0). The resulting entry is written to unwrapped (the globally
- defind output of the algorithm) and and pushed to queue primaryqueuenum.
+ defind output of the algorithm) and pushed to queue primaryqueuenum.
 
  Arguments:
  primaryqueuenum: index of the queue for pushing the resulting entry
@@ -174,7 +184,7 @@ int Pop(int queuenum, void *x) {
 */
 void Check(int primaryqueuenum, QUEUEENTRY *qe, long offp, int offx, int offy, int offz) {
     /* first check bounds */
-    QUEUEENTRY nqe;
+    QUEUEENTRY nqe{};
     nqe.x = qe->x + offx;
     if ((nqe.x < 0) || (nqe.x >= dim[0])) return;
     nqe.y = qe->y + offy;
@@ -235,8 +245,6 @@ void Check(int primaryqueuenum, QUEUEENTRY *qe, long offp, int offx, int offy, i
 */
 //TODO: Why on earth is ptrdiff_t used everywhere? Isn't seed just a number? Highly confusing..
 void unwrap(ptrdiff_t seedx, ptrdiff_t seedy, ptrdiff_t seedz, ptrdiff_t UNWRAPBINS) {
-//    ptrdiff_t i;
-    ptrdiff_t seedp;
 
     errcode = 0;
 
@@ -250,11 +258,11 @@ void unwrap(ptrdiff_t seedx, ptrdiff_t seedy, ptrdiff_t seedz, ptrdiff_t UNWRAPB
     for (ptrdiff_t i = 0; i < sze; i++) {
         min = mag[i] < min ? mag[i] : min;
         max = mag[i] > max ? mag[i] : max;
-    };
+    }
 
     double diff = (double) 1.00001 * (max - min);
 
-    seedp = seedx + dim[0] * (seedy + dim[1] * seedz);
+    ptrdiff_t seedp = seedx + dim[0] * (seedy + dim[1] * seedz);
 
     flag = new bool[sze];
 
@@ -298,15 +306,15 @@ void unwrap(ptrdiff_t seedx, ptrdiff_t seedy, ptrdiff_t seedz, ptrdiff_t UNWRAPB
                 Check(static_cast<int>(i), &qe, -m_bsy, 0, -1, 0);
                 Check(static_cast<int>(i), &qe, +m_bsx, 1, 0, 0);
                 Check(static_cast<int>(i), &qe, -m_bsx, -1, 0, 0);
-            };
-        };
+            }
+        }
         TerminateQueue(static_cast<int>(i));    /* done with this Queue so free up memory */
 
         if (errcode) break;
-    };
+    }
 
     delete flag;
-};
+}
 
 /*
  Wrapper to initialize the global variables used in this source file while
@@ -314,13 +322,15 @@ void unwrap(ptrdiff_t seedx, ptrdiff_t seedy, ptrdiff_t seedz, ptrdiff_t UNWRAPB
 
  TODO: This function should not be needed and disappear after thorough refactoring.
 */
-void unwrap_helper(const ptrdiff_t seedx, const ptrdiff_t seedy, const ptrdiff_t seedz,
-                   const ptrdiff_t UNWRAPBINS,
+void unwrap_helper(ptrdiff_t seedx,
+                   ptrdiff_t seedy,
+                   ptrdiff_t seedz,
+                   ptrdiff_t UNWRAPBINS,
                    const ptrdiff_t *dim_,
-                   const ptrdiff_t sze_,
-                   const ptrdiff_t m_bsx_,
-                   const ptrdiff_t m_bsy_,
-                   const ptrdiff_t m_bsz_,
+                   ptrdiff_t sze_,
+                   ptrdiff_t m_bsx_,
+                   ptrdiff_t m_bsy_,
+                   ptrdiff_t m_bsz_,
                    const double *phase_,
                    const double *mag_,
                    double *unwrapped_) {
@@ -344,4 +354,4 @@ void unwrap_helper(const ptrdiff_t seedx, const ptrdiff_t seedy, const ptrdiff_t
     }
 
     unwrap(seedx, seedy, seedz, UNWRAPBINS);
-};
+}
