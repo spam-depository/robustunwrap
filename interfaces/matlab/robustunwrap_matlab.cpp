@@ -56,11 +56,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     }
 
     mxDouble *voxdims = mxGetPr(prhs[0]);
-    ptrdiff_t seedx = ptrdiff_t(voxdims[0]) - 1;
-    ptrdiff_t seedy = ptrdiff_t(voxdims[1]) - 1;
-    ptrdiff_t seedz = ptrdiff_t(voxdims[2]) - 1;
+    index_t seedx = index_t(voxdims[0]) - 1;
+    index_t seedy = index_t(voxdims[1]) - 1;
+    index_t seedz = index_t(voxdims[2]) - 1;
 
-    ptrdiff_t dim[ndims];
+    index_t dim[ndims];
     const mwSize *dims = mxGetDimensions(prhs[1]);
     const mwSize *dims_mag = mxGetDimensions(prhs[2]);
     size_t sze = 1;
@@ -73,9 +73,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     };
 
     /* define strides */
-    ptrdiff_t m_bsx = 1;
-    ptrdiff_t m_bsy = dims[0];
-    ptrdiff_t m_bsz = dims[0] * dims[1];
+    index_t m_bsx = 1;
+    index_t m_bsy = dims[0];
+    index_t m_bsz = dims[0] * dims[1];
 
     if (seedx < 0 || seedx >= dims[0] || seedy < 0 || seedy >= dims[1] || seedz < 0 || seedz >= dims[2]) {
         mexErrMsgTxt("The seed specified was outside the matrix bounds.");

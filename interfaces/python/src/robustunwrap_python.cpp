@@ -33,13 +33,13 @@ py::array_t<double, py::array::f_style | py::array::forcecast> robustunwrap(py::
         throw std::runtime_error("seed must be an index into the 3D data array consisting of 3 ints.");
     }
 
-    const ptrdiff_t seedX = py::cast<int>(seed[0]); // maybe a bit naive. might not work that way.
-    const ptrdiff_t seedY = py::cast<int>(seed[1]);
-    const ptrdiff_t seedZ = py::cast<int>(seed[2]);
+    // TODO: manual type checking before cast for more user friendly errors
+    const index_t seedX = seed[0].cast<index_t>();
+    const index_t seedY = seed[1].cast<index_t>();
+    const index_t seedZ = seed[2].cast<index_t>();
 
-    
-    const ptrdiff_t *dims = phaseData.shape();
-    const ptrdiff_t size = phaseData.size();
+    const index_t *dims = phaseData.shape();
+    const index_t size = phaseData.size();
 
     if (seedX < 0 || seedX >= dims[0] || seedY < 0 || seedY >= dims[1] || seedZ < 0 || seedZ >= dims[2]) {
         throw std::runtime_error("The seed specified was outside the matrix bounds.");
@@ -54,9 +54,9 @@ py::array_t<double, py::array::f_style | py::array::forcecast> robustunwrap(py::
     // else if (magnitudeData.dtype != ??? || phaseData.dtype != ???) { ...
 
     /* define strides */
-    ptrdiff_t m_bsx = 1;
-    ptrdiff_t m_bsy = dims[0];
-    ptrdiff_t m_bsz = dims[0] * dims[1];
+    index_t m_bsx = 1;
+    index_t m_bsy = dims[0];
+    index_t m_bsz = dims[0] * dims[1];
 
     // Negate input as low polefield values unwrapped first
     const double *magnitudeInput = magnitudeData.data();
