@@ -19,26 +19,39 @@
 
 #define PI 3.14159265358979
 
-int errcode;                    // indicator of an error
-ptrdiff_t dim[3];               // size of data in x/y/z direction
-ptrdiff_t sze;                  // size of data as fattened array
-const double *phase, *mag;      // input data phase/magnitude
-// TODO: unwrapped is assigned, but never accessed
-double *unwrapped;              // global results: unwrapped phase
-bool *flag;                     // indicator of points processed
-ptrdiff_t m_bsx, m_bsy, m_bsz;  // stride for x/y/z dimension in flattened data array
+/*
+ This code has been refactored to use a signed type for indexing with index_t.
+ This is a deliberate choice following suggestion by many C++ veterans and
+ mainly aims to prevent common mistakes arising from uncareful use of unsigned
+ types specifcally (but not explusive) in combination with signed offsets.
+ Choosing ptrdiff_t as a platform dependent signed counterpart to size_t seems
+ natural, but comes with caveats:
+ 1. ptrdiff_t is commonly defined with the same bit-width as size_t, but this
+    is not guaranteed. In case of uncommon plattforms this should be carefully
+    checked to prevent overflow behaviour (if smaller than expected).
+ 2. Assuming same bit-width as size_t, ptrdiff_t might be only able to address
+    half of the available memory (in bytes). Since it is used for indexing
+    double arrays here this should not be any issue.
+*/
 
-struct QUEUEENTRY {
-    ptrdiff_t x, y, z;
-    ptrdiff_t p;
-    double v;
+index_t dim[3];               // size of data in x/y/z direction
+index_t sze;                  // size of data as flattened array
+const double *phase, *mag;    // input data phase/magnitude
+double *unwrapped;            // global results: unwrapped phase (memory allocated by caller)
+bool *flag;                   // indicator of points processed
+index_t m_bsx, m_bsy, m_bsz;  // stride for x/y/z dimension in flattened data array
+
+struct QUEUEENTRY {  // describes one voxel of the data
+    index_t x, y, z; // index in 3D array
+    index_t p;       // index in flattened array
+    double v;        // value
 };
 
 /*
  perform unwrapping step on neighbor of qe at offset (offp, offx, offy, offz)
- checks are performed if offset points to a valid positon amd if data at offset
+ checks are performed if offset points to a valid position and if data at offset
  has already been processed (flag(p) == true). In both cases the function returns
- without any action. If checks oass a potential shift by multiples of 2*PI is
+ without any action. If checks pass a potential shift by multiples of 2*PI is
  estimated and applied based on the value difference of qe and the neighbor (the
  multiple might be 0). The resulting entry is written to unwrapped (the globally
  defind output of the algorithm) and pushed to queue primaryqueuenum.
@@ -55,7 +68,7 @@ struct QUEUEENTRY {
  dim (size of data in x/y/z direction): read
  flag (indicator of points processed): flag for point at offset is set
 */
-void Check(int primaryqueuenum, QUEUEENTRY *qe, long offp, int offx, int offy, int offz) {
+void Check(queue_index_t primaryqueuenum, QUEUEENTRY *qe, index_t offp, index_t offx, index_t offy, index_t offz) {
     /* first check bounds */
     QUEUEENTRY nqe{};
     nqe.x = qe->x + offx;
@@ -88,7 +101,7 @@ void Check(int primaryqueuenum, QUEUEENTRY *qe, long offp, int offx, int offy, i
 
 /*
  The main unwrapping algorithm
- 1. Define the polefield thresholds based on inverse magnitude image and UNWRAPBINS
+ 1. Define the polefield thresholds based on inverse magnitude image and num_unwrapbins
  2. Initialize flag and queues (and queue seedpoint for processing)
  3. start processing by popping an entry (current point) from the lowest indexed
     queue and
@@ -103,8 +116,8 @@ void Check(int primaryqueuenum, QUEUEENTRY *qe, long offp, int offx, int offy, i
 
  Arguments:
  seedx/y/z: coordinates (0-based indices) of the seedpoint along dim[0]/[1]/[2]
- UNWRAPBINS: number of bins to use for this algorithm. this determines the granularity
-             of the polefield thresholds
+ num_unwrapbins: number of bins to use for this algorithm. this determines the
+                 granularity of the polefield thresholds (must be positive)
 
  Direct global variable access:
  unwrapped (global results): seedpoint is written
@@ -116,35 +129,36 @@ void Check(int primaryqueuenum, QUEUEENTRY *qe, long offp, int offx, int offy, i
  flag (indicator of points processed): is initialized
  errorcode (indicator of an error): initialize and read
 */
-//TODO: Why on earth is ptrdiff_t used everywhere? Isn't seed just a number? Highly confusing..
-void unwrap(ptrdiff_t seedx, ptrdiff_t seedy, ptrdiff_t seedz, ptrdiff_t UNWRAPBINS) {
-
-    errcode = 0;
-
+void unwrap(index_t seedx, index_t seedy, index_t seedz, index_t num_unwrapbins) {
+    queue_index_t unwrapbins = static_cast<queue_index_t>(num_unwrapbins);
+    if (unwrapbins > NUMQUEUES) {
+        raiseerror("The maximum number of unwrapbins is hardcoded to a smaller number.");
+        return;
+    }
     /* Minimum number of unwrapping bins is 2 */
-    if (UNWRAPBINS < 2) UNWRAPBINS = 2;
+    if (unwrapbins < 2) unwrapbins = 2;
     /* Find min and max */
     double min, max;
     min = (double) 1e38;
     max = 0;
 
-    for (ptrdiff_t i = 0; i < sze; i++) {
+    for (index_t i = 0; i < sze; i++) {
         min = mag[i] < min ? mag[i] : min;
         max = mag[i] > max ? mag[i] : max;
     }
 
     double diff = (double) 1.00001 * (max - min);
 
-    ptrdiff_t seedp = seedx + dim[0] * (seedy + dim[1] * seedz);
+    index_t seedp = seedx + dim[0] * (seedy + dim[1] * seedz);
 
     flag = new bool[sze];
 
     if (!flag) raiseerror("Out of memory. ");
-    for (ptrdiff_t i = 0; i < sze; i++)
+    for (index_t i = 0; i < sze; i++)
         flag[i] = false;
 
-    for (ptrdiff_t i = 0; i < UNWRAPBINS; i++)
-        InitQueue(static_cast<int>(i), sizeof(QUEUEENTRY));
+    for (queue_index_t i = 0; i < unwrapbins; i++)
+        InitQueue(i, sizeof(QUEUEENTRY));
     QUEUEENTRY qe{};
 
     qe.p = seedp;
@@ -158,32 +172,31 @@ void unwrap(ptrdiff_t seedx, ptrdiff_t seedy, ptrdiff_t seedz, ptrdiff_t UNWRAPB
     Push(0, &qe);
 
 /* First, work out pole field threshold that we're going to use */
-    auto *polefieldthresholds = new double[UNWRAPBINS];
+    auto *polefieldthresholds = new double[static_cast<size_t>(unwrapbins)];
 
-    for (ptrdiff_t i = 0; i < UNWRAPBINS; i++)
-        polefieldthresholds[i] = min + (diff * static_cast<double>(i) / (static_cast<double>(UNWRAPBINS) - 1.0));
+    for (queue_index_t i = 0; i < unwrapbins; i++)
+        polefieldthresholds[i] = min + (diff * static_cast<double>(i) / (static_cast<double>(unwrapbins) - 1.0));
 
     // TODO: Display warning if seedpoint is chosen badly (i.e. mag[seed]>polefieldthresholds[0])
 
-    for (ptrdiff_t i = 0; i < UNWRAPBINS; i++) {
-        while (!errcode && !Pop(static_cast<int>(i), &qe)) {
+    for (queue_index_t i = 0; i < unwrapbins; i++) {
+        while (!IsEmpty(i)) {
+            Pop(i, &qe);
             if (mag[qe.p] >
                 polefieldthresholds[i]) { /* too close to a scary pole, so just defer by pushing to other stack */
-                int ind;
+                queue_index_t ind;
                 for (ind = i + 1; mag[qe.p] > polefieldthresholds[ind]; ind++);
                 Push(ind, &qe);                                        /* just defer by pushing to relevant stack */
             } else {
-                Check(static_cast<int>(i), &qe, +m_bsz, 0, 0, 1);
-                Check(static_cast<int>(i), &qe, -m_bsz, 0, 0, -1);
-                Check(static_cast<int>(i), &qe, +m_bsy, 0, 1, 0);
-                Check(static_cast<int>(i), &qe, -m_bsy, 0, -1, 0);
-                Check(static_cast<int>(i), &qe, +m_bsx, 1, 0, 0);
-                Check(static_cast<int>(i), &qe, -m_bsx, -1, 0, 0);
+                Check(i, &qe, +m_bsz, 0, 0, 1);
+                Check(i, &qe, -m_bsz, 0, 0, -1);
+                Check(i, &qe, +m_bsy, 0, 1, 0);
+                Check(i, &qe, -m_bsy, 0, -1, 0);
+                Check(i, &qe, +m_bsx, 1, 0, 0);
+                Check(i, &qe, -m_bsx, -1, 0, 0);
             }
         }
-        TerminateQueue(static_cast<int>(i));    /* done with this Queue so free up memory */
-
-        if (errcode) break;
+        TerminateQueue(i);    /* done with this Queue so free up memory */
     }
 
     delete flag;
@@ -195,15 +208,15 @@ void unwrap(ptrdiff_t seedx, ptrdiff_t seedy, ptrdiff_t seedz, ptrdiff_t UNWRAPB
 
  TODO: This function should not be needed and disappear after thorough refactoring.
 */
-void unwrap_helper(ptrdiff_t seedx,
-                   ptrdiff_t seedy,
-                   ptrdiff_t seedz,
-                   ptrdiff_t UNWRAPBINS,
-                   const ptrdiff_t *dim_,
-                   ptrdiff_t sze_,
-                   ptrdiff_t m_bsx_,
-                   ptrdiff_t m_bsy_,
-                   ptrdiff_t m_bsz_,
+void unwrap_helper(index_t seedx,
+                   index_t seedy,
+                   index_t seedz,
+                   index_t num_unwrapbins,
+                   const index_t *dim_,
+                   index_t sze_,
+                   index_t m_bsx_,
+                   index_t m_bsy_,
+                   index_t m_bsz_,
                    const double *phase_,
                    const double *mag_,
                    double *unwrapped_) {
@@ -213,7 +226,7 @@ void unwrap_helper(ptrdiff_t seedx,
     m_bsz = m_bsz_;
     phase = phase_;
     mag = mag_;
-    unwrapped = unwrapped_;
+    unwrapped = unwrapped_; // memory allocated/managed by calling interface
     {
         size_t dim_sz = sizeof(dim) / sizeof(dim[0]);
         for (size_t i = 0; i < dim_sz; i++)
@@ -221,10 +234,5 @@ void unwrap_helper(ptrdiff_t seedx,
     }
     //memcpy(x,m_q[queuenum]+m_bot[queuenum]*m_chunk[queuenum],m_chunk[queuenum]);
 
-    if (UNWRAPBINS > NUMQUEUES) {
-        raiseerror("The maximum number of UNWRAPBINS is hardcoded to a smaller number.");
-        return;
-    }
-
-    unwrap(seedx, seedy, seedz, UNWRAPBINS);
+    unwrap(seedx, seedy, seedz, num_unwrapbins);
 }

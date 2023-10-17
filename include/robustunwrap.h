@@ -2,15 +2,17 @@
 
 #include <cstddef>
 
-void unwrap_helper(ptrdiff_t seedx,
-                   ptrdiff_t seedy,
-                   ptrdiff_t seedz,
-                   ptrdiff_t UNWRAPBINS,
-                   const ptrdiff_t *dim_,
-                   ptrdiff_t sze_,
-                   ptrdiff_t m_bsx_,
-                   ptrdiff_t m_bsy_,
-                   ptrdiff_t m_bsz_,
+typedef ptrdiff_t index_t; // for specifying indices and offsets into the images
+
+void unwrap_helper(index_t seedx,
+                   index_t seedy,
+                   index_t seedz,
+                   index_t num_unwrapbins,
+                   const index_t *dim_,
+                   index_t sze_,
+                   index_t m_bsx_,
+                   index_t m_bsy_,
+                   index_t m_bsz_,
                    const double *phase_,
                    const double *mag_,
                    double *unwrapped_);

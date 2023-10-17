@@ -13,11 +13,13 @@
 
 #include <cstddef>
 #include <cstring>
+#include <new>
 #include "raiseerror.h"
 #include "multiqueue.h"
 
-static long m_bot[NUMQUEUES], m_top[NUMQUEUES]; // FI and LI element for each queue
-static long m_size[NUMQUEUES], m_chunk[NUMQUEUES], m_sizeb[NUMQUEUES]; // memory size of each queue in elements (m_size) and bytes (m_sizeb) and size of a single element (m_chunk) for each queue
+static queue_index_t m_bot[NUMQUEUES], m_top[NUMQUEUES]; // FI and LI element for each queue
+static queue_index_t m_size[NUMQUEUES]; // memory size of each queue in elements
+static size_t m_sizeb[NUMQUEUES], m_chunk[NUMQUEUES]; // memory size of each queue in bytes (m_sizeb) and size of a single element (m_chunk) for each queue in bytes
 static char *m_q[NUMQUEUES]; // pointer to allocated memory for each queue (or 0)
 
 /*
@@ -25,7 +27,7 @@ static char *m_q[NUMQUEUES]; // pointer to allocated memory for each queue (or 0
  This function only sets the metadata, the actual memory allocation is done
  in lazy manner by push()
 */
-void InitQueue(int queuenum, int chunk) {
+void InitQueue(queue_index_t queuenum, size_t chunk) {
     m_chunk[queuenum] = chunk;
     m_bot[queuenum] = 0;
     m_top[queuenum] = 0;
@@ -35,13 +37,13 @@ void InitQueue(int queuenum, int chunk) {
 }
 
 /*
- free the memory for queue at ince queuenum
- other metadata like m_bot and m_top are not reset so using Pop() or Push()
- for queuenum after calling this function is not safe.
+ free the memory for queue at index queuenum and re-initialize as emty queue
 */
-void TerminateQueue(int queuenum) {
-    if (m_q[queuenum]) delete m_q[queuenum];
-    m_q[queuenum] = nullptr;
+void TerminateQueue(queue_index_t queuenum) {
+    if (m_q[queuenum]) {
+        delete m_q[queuenum];
+        InitQueue(queuenum, m_chunk[queuenum]);
+    }
 }
 
 /*
@@ -51,20 +53,14 @@ void TerminateQueue(int queuenum) {
  x is copied from the given pointer. size is assumed to be m_chunk[queuenum]
  bytes as defined with InitQueue()
 */
-int Push(int queuenum, void *x) {
-    if (!m_q[queuenum]) m_q[queuenum] = new char[m_sizeb[queuenum]];
+int Push(queue_index_t queuenum, void *x) {
+    if (!m_q[queuenum]) m_q[queuenum] = new(std::nothrow) char[m_sizeb[queuenum]];
 
-    // TODO: Can be removed. "new char[..]" will throw an exception when out of memory. It will not return null_ptr.
-    // See https://en.cppreference.com/w/cpp/memory/new/operator_new
+    // TODO: Consider getting rid of nothrow and pass the exception
     if (!m_q[queuenum]) {
         raiseerror("Out of memory - could not generate new point queue.");
         return (-1); // should never be reached
     }
-
-    // TODO: What exactly is stacksize supposed to do? It's never used anywhere else although it is assigned here.
-    long stacksize;
-    stacksize = m_top[queuenum] - m_bot[queuenum];
-    if (stacksize < 0) stacksize += m_size[queuenum];
 
     memcpy(m_q[queuenum] + m_top[queuenum] * m_chunk[queuenum], x, m_chunk[queuenum]);
     m_top[queuenum]++;
@@ -73,23 +69,22 @@ int Push(int queuenum, void *x) {
 
     if (m_top[queuenum] == m_bot[queuenum]) {
         char *newq;
-        long newsize, newsizeb, abovebot_b;
+        size_t newsize, newsizeb, abovebot_b;
         // previously out of memory - now auto-expand
         newsize = m_size[queuenum] + BLOCKINCREMENT;
         newsizeb = newsize * m_chunk[queuenum];
-        newq = new char[newsizeb];
+        newq = new(std::nothrow) char[newsizeb];
 
-        // TODO: Can be removed. "new char[..]" will throw an exception when out of memory. It will not return null_ptr.
         if (!newq) {
             raiseerror("Out of memory - point queue full.");
-            return (-1); // should be never reached
+            return (-1);
         }
 
         // While we're shifting circular buffer, it is actually easier to re-origin it
         // to zero.
         // first, copy top bit from m_bot upwards
         abovebot_b = (m_size[queuenum] - m_bot[queuenum]) * m_chunk[queuenum];
-        if (abovebot_b > 0) memcpy(newq, (char *) m_q[queuenum] + m_bot[queuenum] * m_chunk[queuenum], abovebot_b);
+        if (abovebot_b != 0) memcpy(newq, (char *) m_q[queuenum] + m_bot[queuenum] * m_chunk[queuenum], abovebot_b);
         // then, do m_top downwards
         if (m_top[queuenum] != 0)
             memcpy((char *) newq + abovebot_b, m_q[queuenum], m_top[queuenum] * m_chunk[queuenum]);
@@ -97,7 +92,6 @@ int Push(int queuenum, void *x) {
         m_top[queuenum] = m_size[queuenum];
         m_size[queuenum] = newsize;
         m_sizeb[queuenum] = newsizeb;
-        // TODO: Seems wrong as m_q[index] is an array. Use delete[]
         delete[] m_q[queuenum]; // recover old memory
         m_q[queuenum] = newq;
     }
@@ -108,14 +102,32 @@ int Push(int queuenum, void *x) {
 /*
  Copy first element of the queue to pointer x and remove from the queue
  returns 0 on success
- returns 1 if queue is empty
+ returns 1 if queue is empty (and raises an error)
 */
-int Pop(int queuenum, void *x) {
-    if (m_bot[queuenum] == m_top[queuenum]) return (1);
+int Pop(queue_index_t queuenum, void *x) {
+    if (m_bot[queuenum] == m_top[queuenum]) {
+        raiseerror("Out of bounds - trying to Pop() empty queue.");
+        return (1);
+    }
 
     memcpy(x, m_q[queuenum] + m_bot[queuenum] * m_chunk[queuenum], m_chunk[queuenum]);
     m_bot[queuenum]++;
     if (m_bot[queuenum] == m_size[queuenum]) m_bot[queuenum] = 0;
 
     return (0);
+}
+
+/*
+ Check if queue at index is empty
+ This function assumes the queue is initialized.
+ If InitQueue() has not been caled for queuenum behaviour is undefined.
+
+ returns 1 for empty queue
+ retruns 0 otherwise
+*/
+int IsEmpty(queue_index_t queuenum) {
+    if (m_bot[queuenum] == m_top[queuenum])
+        return (1);
+    else
+        return (0);
 }
