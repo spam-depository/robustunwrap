@@ -7,6 +7,7 @@ file(GLOB_RECURSE
 add_library(robustunwrap_library
         STATIC
         robustunwrap.cpp
+        multiqueue.cpp
 )
 
 target_include_directories(robustunwrap_library PUBLIC "${RobustUnwrap_SOURCE_DIR}/include")
