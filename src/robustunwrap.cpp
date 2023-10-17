@@ -131,7 +131,7 @@ void Check(queue_index_t primaryqueuenum, QUEUEENTRY *qe, index_t offp, index_t 
 */
 void unwrap(index_t seedx, index_t seedy, index_t seedz, index_t num_unwrapbins) {
     queue_index_t unwrapbins = static_cast<queue_index_t>(num_unwrapbins);
-    if (unwrapbins > NUMQUEUES) {
+    if (!InitNQueues(unwrapbins, sizeof(QUEUEENTRY))) {
         raiseerror("The maximum number of unwrapbins is hardcoded to a smaller number.");
         return;
     }
@@ -157,10 +157,7 @@ void unwrap(index_t seedx, index_t seedy, index_t seedz, index_t num_unwrapbins)
     for (index_t i = 0; i < sze; i++)
         flag[i] = false;
 
-    for (queue_index_t i = 0; i < unwrapbins; i++)
-        InitQueue(i, sizeof(QUEUEENTRY));
     QUEUEENTRY qe{};
-
     qe.p = seedp;
     qe.x = seedx;
     qe.y = seedy;

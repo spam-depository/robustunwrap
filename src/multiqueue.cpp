@@ -47,6 +47,21 @@ void TerminateQueue(queue_index_t queuenum) {
 }
 
 /*
+ Initialize the first num_queues for elements of size chunk bytes
+ This is a wrapper around InitQueue for conveninece
+
+ returns 1 on success
+ returns 0 if num_queues is larger than NUMQUEUES
+*/
+int InitNQueues(queue_index_t num_queues, size_t chunk) {
+    if (num_queues > NUMQUEUES)
+        return 0;
+    for (queue_index_t i = 0; i < num_queues; i++)
+        InitQueue(i, chunk);
+    return 1;
+}
+
+/*
  push element x into queue at index queuenum
  this function takes care of allocating memory and expanding the queue size
  if necessary.
